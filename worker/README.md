@@ -39,7 +39,7 @@ FFmpeg jobs run one at a time, while downloads run in parallel (`IO_CONCURRENCY`
 
 ## Running as a system service
 
-`deploy/install.sh` installs the worker as a hardened systemd service. The service runs hourly and starts 10 minutes after boot, with no login needed.
+`deploy/install.sh` installs the worker as a hardened systemd service. The service runs every hour on the hour and 10 minutes after boot, with no login needed.
 
 ```sh
 sudo NODE="$(command -v node)" deploy/install.sh
