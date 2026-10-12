@@ -1,15 +1,52 @@
 <?xml version="1.0"?>
-<info>
-    <id>localthumbs</id>
-    <name>Local Thumbnailer Integration</name>
-    <summary>API and Preview Provider for externally generated thumbnails</summary>
-    <description>Allows uploading thumbnails from a local machine via API and using them as native Nextcloud previews. Part of the LocalNCThumbnailer suite. More info: https://github.com/hersche/nc-local-thumbnailer/ and https://github.com/hersche/local-nc-local-thumbnailer/</description>
-    <version>1.0.1</version>
-    <licence>agpl</licence>
-    <author>Gemini</author>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>video_thumbs_relay</id>
+    <name>Video Thumbnail Relay</name>
+    <summary>Video previews for hosts without FFmpeg, rendered by a worker you run</summary>
+    <description><![CDATA[Many managed and shared hosts don't ship FFmpeg, so Nextcloud can't create previews for video files. Video Thumbnail Relay moves that work to a machine you control.
+
+**How it works**
+
+1. A small Node.js worker runs on your own computer or server. It scans your files over WebDAV, renders one frame from each video with FFmpeg, and uploads it as a JPEG.
+2. This app stores those thumbnails and serves them as native Nextcloud previews for video files. You see them in Files, Photos and shares.
+
+**Features**
+
+- Uses only the public Nextcloud API. No FFmpeg is needed on the server.
+- Protects the upload API with an optional shared secret, set in **Administration settings → Additional settings**.
+- Accepts only JPEG images up to 5 MB, and only for video files the uploading user can access.
+- Deletes thumbnails automatically when their video is permanently deleted, and deletes all stored data when the app is uninstalled.
+
+**Privacy**
+
+The app sends no data to third parties. Thumbnails are uploaded by your own worker, using your own Nextcloud credentials.
+
+The worker and setup instructions are in the repository's `worker/` folder.
+
+This app is a fork of [localthumbs](https://github.com/hersche/nc-local-thumbnailer) by Vinzenz Hersche.]]></description>
+    <version>1.0.0</version>
+    <licence>AGPL-3.0-or-later</licence>
+    <author mail="silversong.88@gmail.com" homepage="https://github.com/silversong88">silversong88</author>
+    <author homepage="https://github.com/hersche">Vinzenz Hersche</author>
+    <namespace>VideoThumbsRelay</namespace>
     <category>multimedia</category>
-    <bugs>https://github.com/hersche/nc-local-thumbnailer/issues</bugs>
+    <website>https://github.com/silversong88/video_thumbs_relay</website>
+    <bugs>https://github.com/silversong88/video_thumbs_relay/issues</bugs>
+    <repository type="git">https://github.com/silversong88/video_thumbs_relay.git</repository>
     <dependencies>
-        <nextcloud min-version="25" max-version="32"/>
+        <php min-version="8.2" max-version="8.5"/>
+        <nextcloud min-version="31" max-version="33"/>
     </dependencies>
+    <background-jobs>
+        <job>OCA\VideoThumbsRelay\BackgroundJob\CleanupOrphans</job>
+    </background-jobs>
+    <repair-steps>
+        <uninstall>
+            <step>OCA\VideoThumbsRelay\Migration\UninstallCleanup</step>
+        </uninstall>
+    </repair-steps>
+    <settings>
+        <admin>OCA\VideoThumbsRelay\Settings\Admin</admin>
+    </settings>
 </info>

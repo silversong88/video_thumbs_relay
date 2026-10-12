@@ -1,0 +1,17 @@
+/**
+ * SPDX-FileCopyrightText: 2026 silversong88
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+#video-thumbs-relay-admin code {
+	user-select: all;
+}
+
+#video-thumbs-relay-admin .vtr-new-secret input {
+	width: min(100%, 520px);
+	font-family: var(--font-face-monospace, monospace);
+}
+
+#video-thumbs-relay-admin .msg {
+	margin-inline-start: 8px;
+	color: var(--color-error-text, var(--color-error));
+}

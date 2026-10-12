@@ -75,19 +75,19 @@ const HELP_MODE = process.argv.includes("--help") || process.argv.includes("-h")
 
 if (HELP_MODE) {
     console.log(`
-🖼️  Localthumbs CLI - Usage Guide
+🖼️  Video Thumbnail Relay worker - Usage Guide
 
 Commands:
   node index.js                      Run a standard scan and upload missing thumbnails.
   node index.js --force              Ignore all caches and re-process all files.
-  node index.js --delete-all-thumbs  Remove all remote thumbnails and clear local caches.
+  node index.js --delete-all-thumbs  Remove all remote thumbnails and clear local caches (admin account required).
   node index.js --help               Show this help message.
 
 Environment Variables (set in .env):
   NC_URL             Nextcloud WebDAV URL (ending in /remote.php/dav/files/user/)
   NC_USER            Nextcloud Username
   NC_PASS            Nextcloud Password or App Token
-  NC_SECRET          (Optional) API Secret matching the server configuration
+  NC_SECRET          (Optional) Secret from Administration settings > Additional settings
   NC_STRICT_TLS      Set to "true" to enable strict SSL verification (default: false)
   
   IO_CONCURRENCY     Simultaneous downloads/checks (default: 2)
@@ -115,7 +115,8 @@ if (DELETE_ALL_MODE) {
 const urlObj = new URL(NC_URL);
 const BASE_URL = `${urlObj.protocol}//${urlObj.host}`;
 const NC_ROOT = NC_URL.split('/remote.php')[0];
-const API_BASE = `${NC_ROOT}/index.php/apps/localthumbs/thumbnail`;
+const APP_ID = "video_thumbs_relay";
+const API_BASE = `${NC_ROOT}/index.php/apps/${APP_ID}/thumbnail`;
 const DAV_PATH_PREFIX = urlObj.pathname;
 const MAX_SIZE_BYTES = (parseInt(MAX_VIDEO_SIZE_MB) || 3000) * 1024 * 1024;
 
@@ -149,7 +150,7 @@ const client = axios.create({
     auth: { username: NC_USER, password: NC_PASS },
     headers: { 
         'OCS-APIRequest': 'true',
-        'X-Localthumbs-Secret': SECRET
+        'X-VideoThumbsRelay-Secret': SECRET
     },
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
@@ -212,6 +213,9 @@ class JobQueue {
 const ioQueue = new JobQueue(parseInt(IO_CONCURRENCY) || 2);
 const ffmpegQueue = new JobQueue(1);
 
+// -tls_verify only exists for https:// inputs; ffmpeg rejects it on http://
+const tlsArgs = (url) => url.startsWith("https:") ? ['-tls_verify', STRICT_TLS ? '1' : '0'] : [];
+
 const getHash = (str) => crypto.createHash("md5").update(str).digest("hex").substring(0, 8);
 const getRelativePath = (fullPath) => {
     let rel = fullPath;
@@ -227,7 +231,7 @@ let capabilities = { batch_exists: false };
 async function checkCapabilities() {
     try {
         const res = await client.get(`${NC_ROOT}/ocs/v2.php/cloud/capabilities?format=json`);
-        const data = res.data.ocs.data.capabilities.localthumbs;
+        const data = res.data.ocs.data.capabilities[APP_ID];
         if (data) {
             capabilities = { ...capabilities, ...data.features };
             console.log(`[i] Remote capabilities detected:`, capabilities);
@@ -421,7 +425,7 @@ async function processFolder(directory = "/") {
                             '-show_format',
                             '-analyzeduration', '20M',
                             '-probesize', '20M',
-                            '-tls_verify', STRICT_TLS ? '1' : '0',
+                            ...tlsArgs(fileUrl),
                             '-headers', `Authorization: ${authHeader}\r\n`,
                             fileUrl
                         ];
@@ -528,7 +532,7 @@ async function processFolder(directory = "/") {
                         if (isRemote && authHeader) {
                             cmd.inputOptions([
                                 '-headers', `Authorization: ${authHeader}\r\n`,
-                                '-tls_verify', STRICT_TLS ? '1' : '0',
+                                ...tlsArgs(input),
                                 `-threads ${THREAD_COUNT}`
                             ]);
                         } else {

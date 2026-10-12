@@ -1,7 +1,7 @@
 {
-  "name": "localthumbs-cli",
-  "version": "1.0.1",
-  "description": "Local thumbnail generator for Nextcloud. Part of the LocalNCThumbnailer suite. More info: https://github.com/hersche/local-nc-local-thumbnailer/ and https://github.com/hersche/nc-local-thumbnailer/",
+  "name": "video-thumbs-relay-worker",
+  "version": "1.0.0",
+  "description": "Local FFmpeg worker for the Video Thumbnail Relay Nextcloud app. https://github.com/silversong88/video_thumbs_relay",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -13,5 +13,9 @@
     "fluent-ffmpeg": "^2.1.2",
     "form-data": "^4.0.0",
     "webdav": "^5.3.0"
+  },
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=18"
   }
 }

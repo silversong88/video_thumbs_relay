@@ -1,45 +1,70 @@
-# 🧠 Localthumbs CLI: The Brains of the Operation (v1.0.1)
+# Video Thumbnail Relay worker
 
-Your Nextcloud hoster is stingy with CPU cycles? Fine. We'll use your local machine's raw power to crunch those videos into beautiful thumbnails.
+This worker renders video thumbnails on your own machine and uploads them to the **Video Thumbnail Relay** Nextcloud app.
 
-**Repos**: [Worker](https://github.com/hersche/local-nc-local-thumbnailer/) | [Nextcloud App](https://github.com/hersche/nc-local-thumbnailer/)
+## Requirements
 
-## ⚡ v1.0.1 Improvements
--   **Security**: Added `NC_STRICT_TLS` and `NC_SECRET` support.
--   **Performance**: 
-    -   **Parallel I/O**: `ioQueue` handles multiple downloads/API checks simultaneously.
-    -   **Sequential Multimedia**: `ffmpegQueue` ensures `ffmpeg` and `ffprobe` never run concurrently.
-    -   **Batch API**: Uses `batchExists` to minimize network overhead.
-    -   **mtime Caching**: Folders are only re-scanned if their `lastmod` timestamp has changed.
--   **Stability**: Tuned `ffprobe` for higher success rates on remote streams.
+- Node.js 18 or newer.
+- `ffmpeg` and `ffprobe` on your `PATH`. On Debian or Ubuntu, run `sudo apt install ffmpeg`.
+- The Video Thumbnail Relay app enabled on your Nextcloud.
 
-## ⚡ Core Features
--   **Smart Caching**:
-    -   `folder_cache.csv`: Skips unchanged folders using WebDAV mtime.
-    -   `thumb_cache.csv`: Remembers what we've already done.
-    -   `fail_cache.csv`: Doesn't waste time retrying broken files.
--   **Ultra-Efficient 3-Stage Processing**:
-    1.  **Remote Stream**: Attempts to extract frames directly from the WebDAV URL using HTTP Range requests. This handles 10GB+ files using only a few MBs of bandwidth.
-    2.  **Partial Download**: If streaming fails, downloads the first 100MB (works for "Fast Start" optimized files).
-    3.  **Full Download**: Last resort fallback, strictly limited by `MAX_VIDEO_SIZE_MB`.
--   **Memory Efficient**: Tested on 4GB RAM instances. Uses Node.js stream pipelines and `spawn`-based child processes to keep a tiny footprint.
+## Setup
 
-## 🛠️ How to use it
-1.  **Install**: `npm install`
-2.  **Config**: Copy `.env.example` to `.env` and fill in your Nextcloud URL and credentials.
-    -   `NC_STRICT_TLS`: Set to `true` to verify SSL certificates (recommended).
-    -   `NC_SECRET`: Must match the `api_secret` set on the Nextcloud server.
-    -   `IO_CONCURRENCY`: Number of simultaneous downloads (default 2).
-3.  **Run**: `node index.js`
-4.  **Run (Help)**: `node index.js --help` (Show all available options and environment variables).
-5.  **Run (Force Refresh)**: `node index.js --force` (Ignores all caches and overwrites existing thumbnails).
-6.  **Run (Delete All)**: `node index.js --delete-all-thumbs` (Removes all thumbnails from the server and wipes local caches).
+```sh
+npm ci --omit=dev
+cp .env.example .env    # then edit .env
+chmod 600 .env
+node index.js
+```
 
-## 📦 Ubuntu/Debian Packaging
-You can package this app as a `.deb` to run it as a systemd service:
-1.  Run the build script: `./build-deb.sh`
-2.  Install the package: `sudo dpkg -i localthumbs-cli_1.0.1_all.deb`
-3.  Configure your credentials in `/etc/localthumbs-cli/localthumbs-cli.env`.
-4.  Start the service: `sudo systemctl enable --now localthumbs-cli`
+- `NC_PASS`: create an app password under **Personal settings → Security → Devices & sessions**. Don't use your login password.
+- `NC_SECRET`: generate one under **Administration settings → Additional settings → Video Thumbnail Relay**.
 
-**Note:** This worker requires the [nc-local-thumbnailer](https://github.com/hersche/nc-local-thumbnailer) app to be installed and enabled on your Nextcloud instance.
+## Usage
+
+| Command | What it does |
+| --- | --- |
+| `node index.js` | Scans your files and uploads any missing thumbnails. |
+| `node index.js --env /path/to/.env` | Uses a different config file, for example one per user. |
+| `node index.js --force` | Ignores the local caches and regenerates every thumbnail. |
+| `node index.js --delete-all-thumbs` | Removes all thumbnails on the server and clears the local caches. Needs an admin account. |
+| `node index.js --help` | Lists all options and environment variables. |
+
+To get the first frame, the worker tries three methods in order:
+1. It streams the video from WebDAV using HTTP range requests.
+2. It downloads the first 100 MB of the file.
+3. It downloads the whole file, up to `MAX_VIDEO_SIZE_MB`.
+
+FFmpeg jobs run one at a time, while downloads run in parallel (`IO_CONCURRENCY`).
+
+## Running on a schedule (systemd user timer)
+
+```ini
+# ~/.config/systemd/user/video-thumbs-relay.service
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/worker
+ExecStart=/usr/bin/node /path/to/worker/index.js --env /path/to/worker/.env
+Nice=10
+IOSchedulingClass=idle
+
+# ~/.config/systemd/user/video-thumbs-relay.timer
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Then run `systemctl --user enable --now video-thumbs-relay.timer`. Run `loginctl enable-linger $USER` too, so the timer keeps running after you log out.
+
+## Known limitations
+
+- **Replaced thumbnails may not show:** Nextcloud caches previews it has already generated, and has no public API for clearing them. If you re-upload a thumbnail with `--force`, an old cached preview may keep showing until the video file itself changes.
+- **Password briefly visible:** while streaming, FFmpeg gets the Authorization header as a command-line argument, so other users on the same machine can briefly see it in the process list.
+
+## Credits
+
+Based on [local-nc-local-thumbnailer](https://github.com/hersche/local-nc-local-thumbnailer) by Vinzenz Hersche. Licensed under AGPL-3.0-or-later.

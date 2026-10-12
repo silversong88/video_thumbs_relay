@@ -1,244 +1,167 @@
 <?php
-namespace OCA\Localthumbs\Controller;
 
+declare(strict_types=1);
+
+/**
+ * SPDX-FileCopyrightText: 2026 Vinzenz Hersche, silversong88
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+namespace OCA\VideoThumbsRelay\Controller;
+
+use OCA\VideoThumbsRelay\Service\SecretService;
+use OCA\VideoThumbsRelay\Service\ThumbnailStore;
 use OCP\AppFramework\Controller;
-use OCP\IRequest;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\JSONResponse;
+use OCP\Files\File;
 use OCP\Files\IRootFolder;
-use OCP\Files\IAppData;
 use OCP\Files\NotFoundException;
+use OCP\IRequest;
 use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 
 class ThumbnailController extends Controller {
-    private $rootFolder;
-    private $appData;
-    private $userSession;
-    private $config;
+	private const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+	private const MAX_BATCH = 500;
 
-    public function __construct($AppName, IRequest $request, IRootFolder $rootFolder, IAppData $appData, IUserSession $userSession, \OCP\IConfig $config) {
-        parent::__construct($AppName, $request);
-        $this->rootFolder = $rootFolder;
-        $this->appData = $appData;
-        $this->userSession = $userSession;
-        $this->config = $config;
-    }
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private IRootFolder $rootFolder,
+		private IUserSession $userSession,
+		private ThumbnailStore $store,
+		private SecretService $secret,
+		private LoggerInterface $logger,
+	) {
+		parent::__construct($appName, $request);
+	}
 
-    /**
-     * Checks if the request has the correct secret header.
-     * This is a simple security measure for the internal API.
-     */
-    private function checkSecret() {
-        $secret = $this->config->getAppValue('localthumbs', 'api_secret', '');
-        if ($secret === '') {
-            return true; // If no secret is set, allow (backward compatibility/simplicity)
-        }
-        $providedSecret = $this->request->getHeader('X-Localthumbs-Secret');
-        return $providedSecret === $secret;
-    }
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'video_thumbs_relay_secret')]
+	public function upload(string $path): JSONResponse {
+		if (!$this->secretOk()) {
+			return $this->invalidSecret();
+		}
 
-    private function getShardFolder(int $fileId) {
-        $shard1 = str_pad($fileId % 100, 2, '0', STR_PAD_LEFT);
-        $shard2 = str_pad(floor($fileId / 100) % 100, 2, '0', STR_PAD_LEFT);
-        
-        try {
-            $base = $this->appData->getFolder('thumbs');
-        } catch (NotFoundException $e) {
-            $base = $this->appData->newFolder('thumbs');
-        }
+		$file = $this->resolveVideo($path);
+		if ($file === null) {
+			return $this->error('Not a video file you can access: ' . $path, Http::STATUS_NOT_FOUND);
+		}
 
-        try {
-            $f1 = $base->getFolder($shard1);
-        } catch (NotFoundException $e) {
-            $f1 = $base->newFolder($shard1);
-        }
+		$upload = $this->request->getUploadedFile('thumbnail');
+		if (!is_array($upload) || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($upload['tmp_name'] ?? '')) {
+			return $this->error('No thumbnail uploaded', Http::STATUS_BAD_REQUEST);
+		}
+		if (($upload['size'] ?? 0) > self::MAX_UPLOAD_BYTES) {
+			return $this->error('Thumbnail larger than 5 MB', Http::STATUS_REQUEST_ENTITY_TOO_LARGE);
+		}
+		$info = @getimagesize($upload['tmp_name']);
+		if ($info === false || $info[2] !== IMAGETYPE_JPEG) {
+			return $this->error('Thumbnail must be a JPEG image', Http::STATUS_UNSUPPORTED_MEDIA_TYPE);
+		}
 
-        try {
-            $f2 = $f1->getFolder($shard2);
-        } catch (NotFoundException $e) {
-            $f2 = $f1->newFolder($shard2);
-        }
+		$handle = fopen($upload['tmp_name'], 'rb');
+		if ($handle === false) {
+			return $this->error('Could not read uploaded thumbnail', Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+		try {
+			$this->store->put($file->getId(), $handle);
+		} catch (\Throwable $e) {
+			$this->logger->error('Storing thumbnail failed', ['exception' => $e]);
+			return $this->error('Storing thumbnail failed', Http::STATUS_INTERNAL_SERVER_ERROR);
+		} finally {
+			if (is_resource($handle)) {
+				fclose($handle);
+			}
+		}
 
-        return $f2;
-    }
+		return new JSONResponse(['status' => 'success', 'fileId' => $file->getId()]);
+	}
 
-    /**
-     * @NoAdminRequired
-     * @NoCSRFRequired
-     */
-    public function upload(string $path) {
-        if (!$this->checkSecret()) {
-            return ['status' => 'error', 'message' => 'Invalid secret'];
-        }
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'video_thumbs_relay_secret')]
+	public function exists(string $path): JSONResponse {
+		if (!$this->secretOk()) {
+			return $this->invalidSecret();
+		}
+		$file = $this->resolveVideo($path);
+		return new JSONResponse(['exists' => $file !== null && $this->store->exists($file->getId())]);
+	}
 
-        try {
-            $user = $this->userSession->getUser();
-            if (!$user) {
-                return ['status' => 'error', 'message' => 'Not authenticated'];
-            }
-            $userId = $user->getUID();
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            
-            // Clean path
-            $path = ltrim($path, '/');
-            
-            if (!$userFolder->nodeExists($path)) {
-                 return ['status' => 'error', 'message' => 'Node does not exist: ' . $path];
-            }
-            
-            $node = $userFolder->get($path);
-            $fileId = $node->getId();
+	/**
+	 * @param list<string> $paths
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'video_thumbs_relay_secret')]
+	public function batchExists(array $paths = []): JSONResponse {
+		if (!$this->secretOk()) {
+			return $this->invalidSecret();
+		}
+		if (count($paths) > self::MAX_BATCH) {
+			return $this->error('At most ' . self::MAX_BATCH . ' paths per request', Http::STATUS_BAD_REQUEST);
+		}
 
-            $uploadedFile = $this->request->getUploadedFile('thumbnail');
-            if (!$uploadedFile || !isset($uploadedFile['tmp_name'])) {
-                return ['status' => 'error', 'message' => 'No file uploaded or invalid upload'];
-            }
+		$results = [];
+		foreach ($paths as $path) {
+			if (!is_string($path)) {
+				continue;
+			}
+			$file = $this->resolveVideo($path);
+			$results[ltrim($path, '/')] = $file !== null && $this->store->exists($file->getId());
+		}
+		return new JSONResponse(['status' => 'success', 'results' => $results]);
+	}
 
-            $folder = $this->getShardFolder($fileId);
-            $fileName = $fileId . '.jpg';
+	/**
+	 * Admin only: removes every stored thumbnail.
+	 */
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'video_thumbs_relay_secret')]
+	public function deleteAll(): JSONResponse {
+		if (!$this->secretOk()) {
+			return $this->invalidSecret();
+		}
+		$this->store->deleteAll();
+		return new JSONResponse(['status' => 'success', 'message' => 'All thumbnails deleted']);
+	}
 
-            // Use streaming for better memory efficiency
-            $handle = @fopen($uploadedFile['tmp_name'], 'r');
-            if ($handle === false) {
-                 return ['status' => 'error', 'message' => 'Failed to open uploaded file: ' . $uploadedFile['tmp_name']];
-            }
+	private function secretOk(): bool {
+		return $this->secret->verify((string)$this->request->getHeader(SecretService::HEADER));
+	}
 
-            try {
-                try {
-                    $file = $folder->getFile($fileName);
-                    $file->putContent($handle);
-                } catch (NotFoundException $e) {
-                    $folder->newFile($fileName, $handle);
-                }
-            } finally {
-                if (is_resource($handle)) {
-                    fclose($handle);
-                }
-            }
+	private function invalidSecret(): JSONResponse {
+		$response = $this->error('Invalid secret', Http::STATUS_UNAUTHORIZED);
+		$response->throttle(['action' => 'video_thumbs_relay_secret']);
+		return $response;
+	}
 
-            return ['status' => 'success', 'fileId' => $fileId];
+	private function error(string $message, int $status): JSONResponse {
+		return new JSONResponse(['status' => 'error', 'message' => $message], $status);
+	}
 
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => $e->getMessage()];
-        }
-    }
-    
-    /**
-     * @NoAdminRequired
-     * @NoCSRFRequired
-     */
-    public function exists(string $path) {
-        if (!$this->checkSecret()) {
-            return ['exists' => false];
-        }
-
-         try {
-            $user = $this->userSession->getUser();
-            if (!$user) {
-                return ['exists' => false];
-            }
-            $userId = $user->getUID();
-
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            $path = ltrim($path, '/');
-            
-             if (!$userFolder->nodeExists($path)) {
-                 return ['exists' => false];
-            }
-            
-            $node = $userFolder->get($path);
-            $fileId = $node->getId();
-            
-            try {
-                $folder = $this->getShardFolder($fileId);
-                $exists = $folder->fileExists($fileId . '.jpg');
-                return ['exists' => $exists];
-            } catch (NotFoundException $e) {
-                return ['exists' => false];
-            }
-         } catch (\Exception $e) {
-             return ['exists' => false];
-         }
-    }
-
-    /**
-     * @NoAdminRequired
-     * @NoCSRFRequired
-     */
-    public function deleteAll() {
-        if (!$this->checkSecret()) {
-            return ['status' => 'error', 'message' => 'Invalid secret'];
-        }
-
-        try {
-            $user = $this->userSession->getUser();
-            if (!$user) {
-                return ['status' => 'error', 'message' => 'Not authenticated'];
-            }
-
-            try {
-                $thumbsFolder = $this->appData->getFolder('thumbs');
-                $thumbsFolder->delete();
-                // Re-create it immediately so it's ready for new uploads
-                $this->appData->newFolder('thumbs');
-            } catch (NotFoundException $e) {
-                // Already empty
-            }
-
-            return ['status' => 'success', 'message' => 'All thumbnails deleted'];
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => $e->getMessage()];
-        }
-    }
-
-    /**
-     * @NoAdminRequired
-     * @NoCSRFRequired
-     */
-    public function batchExists(array $paths) {
-        if (!$this->checkSecret()) {
-            return ['status' => 'error', 'message' => 'Invalid secret'];
-        }
-
-        try {
-            $user = $this->userSession->getUser();
-            if (!$user) {
-                return ['status' => 'error', 'message' => 'Not authenticated'];
-            }
-            $userId = $user->getUID();
-            $userFolder = $this->rootFolder->getUserFolder($userId);
-            
-            $results = [];
-            foreach ($paths as $path) {
-                $path = ltrim($path, '/');
-                if (!$userFolder->nodeExists($path)) {
-                    $results[$path] = false;
-                    continue;
-                }
-                
-                $node = $userFolder->get($path);
-                $fileId = $node->getId();
-                
-                try {
-                    $shard1 = str_pad($fileId % 100, 2, '0', STR_PAD_LEFT);
-                    $shard2 = str_pad(floor($fileId / 100) % 100, 2, '0', STR_PAD_LEFT);
-                    
-                    $exists = false;
-                    try {
-                        $folder = $this->appData->getFolder('thumbs')
-                                    ->getFolder($shard1)
-                                    ->getFolder($shard2);
-                        $exists = $folder->fileExists($fileId . '.jpg');
-                    } catch (NotFoundException $e) {
-                        $exists = false;
-                    }
-                    $results[$path] = $exists;
-                } catch (\Exception $e) {
-                    $results[$path] = false;
-                }
-            }
-            
-            return ['status' => 'success', 'results' => $results];
-        } catch (\Exception $e) {
-            return ['status' => 'error', 'message' => $e->getMessage()];
-        }
-    }
+	/**
+	 * Resolves a path relative to the current user's home to a video file, or null.
+	 */
+	private function resolveVideo(string $path): ?File {
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return null;
+		}
+		try {
+			$node = $this->rootFolder->getUserFolder($user->getUID())->get(ltrim($path, '/'));
+		} catch (NotFoundException) {
+			return null;
+		}
+		if (!$node instanceof File || !str_starts_with($node->getMimetype(), 'video/')) {
+			return null;
+		}
+		return $node;
+	}
 }

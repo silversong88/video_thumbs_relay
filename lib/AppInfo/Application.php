@@ -1,34 +1,33 @@
 <?php
 
-namespace OCA\Localthumbs\AppInfo;
+declare(strict_types=1);
 
+/**
+ * SPDX-FileCopyrightText: 2026 Vinzenz Hersche, silversong88
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+namespace OCA\VideoThumbsRelay\AppInfo;
+
+use OCA\VideoThumbsRelay\Capabilities;
+use OCA\VideoThumbsRelay\Preview\PreviewProvider;
 use OCP\AppFramework\App;
+use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
-use OCP\AppFramework\Bootstrap\IBootContext;
-use OCA\Localthumbs\Provider\PreviewProvider;
-use OCP\IPreview;
 
 class Application extends App implements IBootstrap {
-    public function __construct(array $urlParams = []) {
-        parent::__construct('localthumbs', $urlParams);
-    }
+	public const APP_ID = 'video_thumbs_relay';
 
-    public function register(IRegistrationContext $context): void {
-        $context->registerCapability(\OCA\Localthumbs\Capabilities::class);
-    }
+	public function __construct(array $urlParams = []) {
+		parent::__construct(self::APP_ID, $urlParams);
+	}
 
-    public function boot(IBootContext $context): void {
-        $server = $context->getServerContainer();
-        
-        // Register for video files
-        try {
-            $previewManager = $server->get(IPreview::class);
-            $previewManager->registerProvider('/^video\/.*/', function() use ($context) {
-                return $context->getAppContainer()->query(PreviewProvider::class);
-            });
-        } catch (\Exception $e) {
-            // Log if needed
-        }
-    }
+	public function register(IRegistrationContext $context): void {
+		$context->registerCapability(Capabilities::class);
+		$context->registerPreviewProvider(PreviewProvider::class, PreviewProvider::MIME_REGEX);
+	}
+
+	public function boot(IBootContext $context): void {
+	}
 }
