@@ -9,7 +9,14 @@ There are two parts:
 
 ## Status
 
-The app is being adapted for Nextcloud 33 and prepared for the Nextcloud App Store. Until a release is published, treat this repository as work in progress.
+Version 1.0.0 is available on the [Nextcloud App Store](https://apps.nextcloud.com/apps/video_thumbs_relay) for Nextcloud 31–33.
+
+## Getting started
+
+1. Install **Video Thumbnail Relay** from the Apps page of your Nextcloud.
+2. Under **Administration settings → Additional settings → Video Thumbnail Relay**, generate an API secret.
+3. Under **Personal settings → Security → Devices & sessions**, create an app password for the worker.
+4. On a Linux machine with FFmpeg, set up the worker. See [worker/README.md](worker/README.md).
 
 ## Development
 

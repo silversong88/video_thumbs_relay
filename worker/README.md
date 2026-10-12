@@ -37,28 +37,30 @@ To get the first frame, the worker tries three methods in order:
 
 FFmpeg jobs run one at a time, while downloads run in parallel (`IO_CONCURRENCY`).
 
-## Running on a schedule (systemd user timer)
+## Running as a system service
 
-```ini
-# ~/.config/systemd/user/video-thumbs-relay.service
-[Service]
-Type=oneshot
-WorkingDirectory=/path/to/worker
-ExecStart=/usr/bin/node /path/to/worker/index.js --env /path/to/worker/.env
-Nice=10
-IOSchedulingClass=idle
+`deploy/install.sh` installs the worker as a hardened systemd service. The service runs hourly and starts 10 minutes after boot, with no login needed.
 
-# ~/.config/systemd/user/video-thumbs-relay.timer
-[Timer]
-OnBootSec=10min
-OnUnitActiveSec=1h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
+```sh
+sudo NODE="$(command -v node)" deploy/install.sh
+sudoedit /etc/video-thumbs-relay/worker.env    # first install only
 ```
 
-Then run `systemctl --user enable --now video-thumbs-relay.timer`. Run `loginctl enable-linger $USER` too, so the timer keeps running after you log out.
+| Path | Contents |
+| --- | --- |
+| `/opt/video-thumbs-relay` | Worker code, its dependencies and a copy of Node.js. Owned by root. |
+| `/etc/video-thumbs-relay/worker.env` | Connection settings. Mode `0640 root:vtrelay`. |
+| `/var/lib/video-thumbs-relay` | Caches and temporary files. |
+
+The service runs as the unprivileged system user `vtrelay`, which can't read home directories or write outside its state directory. The unit sets the cache and temp paths itself, so leave them out of `worker.env`.
+
+Re-run the same `install.sh` command to update the worker. Your config and caches are kept.
+
+```sh
+systemctl list-timers video-thumbs-relay.timer   # next run
+journalctl -u video-thumbs-relay.service -f      # live log
+sudo systemctl start video-thumbs-relay.service  # run now
+```
 
 ## Known limitations
 

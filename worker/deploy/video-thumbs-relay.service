@@ -1,0 +1,45 @@
+[Unit]
+Description=Video Thumbnail Relay worker
+Documentation=https://github.com/silversong88/video_thumbs_relay
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=vtrelay
+Group=vtrelay
+ExecStart=/opt/video-thumbs-relay/bin/node /opt/video-thumbs-relay/index.js --env /etc/video-thumbs-relay/worker.env
+WorkingDirectory=/var/lib/video-thumbs-relay
+# Paths set here win over the env file (dotenv never overrides existing variables)
+Environment=TEMP_DIR=/var/lib/video-thumbs-relay/tmp
+Environment=FOLDER_CACHE=/var/lib/video-thumbs-relay/folder_cache.csv
+Environment=THUMB_CACHE=/var/lib/video-thumbs-relay/thumb_cache.csv
+Environment=FAIL_CACHE=/var/lib/video-thumbs-relay/fail_cache.csv
+StateDirectory=video-thumbs-relay
+StateDirectoryMode=0750
+UMask=0027
+Nice=10
+IOSchedulingClass=idle
+
+# Hardening: the worker only needs the network, ffmpeg and its state directory
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
