@@ -1,0 +1,17 @@
+{
+  "name": "localthumbs-cli",
+  "version": "1.0.1",
+  "description": "Local thumbnail generator for Nextcloud. Part of the LocalNCThumbnailer suite. More info: https://github.com/hersche/local-nc-local-thumbnailer/ and https://github.com/hersche/nc-local-thumbnailer/",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "form-data": "^4.0.0",
+    "webdav": "^5.3.0"
+  }
+}
