@@ -43,7 +43,7 @@ class PreviewProvider implements IProviderV2 {
 			return null;
 		}
 		try {
-			$image = new Image();
+			$image = $this->newImage();
 			$image->loadFromData($thumb->getContent());
 			if ($image->valid()) {
 				$image->scaleDownToFit($maxX, $maxY);
@@ -53,5 +53,12 @@ class PreviewProvider implements IProviderV2 {
 			$this->logger->warning('Could not load stored thumbnail for file ' . $file->getId(), ['exception' => $e]);
 		}
 		return null;
+	}
+
+	/**
+	 * Typed as IImage: OCP\Image inherits its methods from a private class static analysis can't see.
+	 */
+	private function newImage(): IImage {
+		return new Image();
 	}
 }

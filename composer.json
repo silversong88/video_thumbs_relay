@@ -1,0 +1,29 @@
+{
+	"name": "silversong88/video_thumbs_relay",
+	"description": "Video previews for Nextcloud hosts without FFmpeg",
+	"type": "project",
+	"license": "AGPL-3.0-or-later",
+	"autoload": {
+		"psr-4": {
+			"OCA\\VideoThumbsRelay\\": "lib/"
+		}
+	},
+	"require": {
+		"php": ">=8.2 <=8.5"
+	},
+	"require-dev": {
+		"nextcloud/ocp": "dev-stable33",
+		"vimeo/psalm": "^6.13"
+	},
+	"scripts": {
+		"lint": "find . -name '*.php' -not -path './vendor/*' -not -path './worker/*' -print0 | xargs -0 -n1 php -l",
+		"psalm": "psalm --no-cache"
+	},
+	"config": {
+		"optimize-autoloader": true,
+		"sort-packages": true,
+		"platform": {
+			"php": "8.2.27"
+		}
+	}
+}

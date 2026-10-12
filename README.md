@@ -11,6 +11,18 @@ There are two parts:
 
 The app is being adapted for Nextcloud 33 and prepared for the Nextcloud App Store. Until a release is published, treat this repository as work in progress.
 
+## Development
+
+```sh
+composer install
+composer run lint                       # PHP syntax check
+composer run psalm                      # static analysis (against nextcloud/ocp)
+tests/integration/run-docker.sh 33      # end-to-end test in a throwaway Nextcloud 33 container
+WORKER=1 tests/integration/run-docker.sh 31   # include the worker (needs node, ffmpeg, npm ci in worker/)
+```
+
+CI runs the same checks on every push and pull request: info.xml validation, PHP lint on PHP 8.2 and 8.5, psalm against the Nextcloud 31–33 public API, and the integration tests on Nextcloud 31, 32 and 33.
+
 ## Credits
 
 This is a fork of the work of Vinzenz Hersche:

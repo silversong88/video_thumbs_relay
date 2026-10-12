@@ -56,7 +56,11 @@ class CleanupOrphans extends TimedJob {
 			->from('filecache')
 			->where($qb->expr()->in('fileid', $qb->createNamedParameter($fileIds, IQueryBuilder::PARAM_INT_ARRAY)));
 		$result = $qb->executeQuery();
-		$existing = array_map('intval', $result->fetchFirstColumn());
+		$existing = [];
+		// fetchOne() rather than fetchFirstColumn(), which only exists from Nextcloud 33
+		while (($id = $result->fetchOne()) !== false) {
+			$existing[] = (int)$id;
+		}
 		$result->closeCursor();
 
 		foreach (array_diff($fileIds, $existing) as $missing) {

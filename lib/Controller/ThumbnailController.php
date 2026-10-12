@@ -75,6 +75,8 @@ class ThumbnailController extends Controller {
 			$this->logger->error('Storing thumbnail failed', ['exception' => $e]);
 			return $this->error('Storing thumbnail failed', Http::STATUS_INTERNAL_SERVER_ERROR);
 		} finally {
+			// newFile() closes the stream itself, so only close it if it is still open
+			/** @psalm-suppress RedundantCondition */
 			if (is_resource($handle)) {
 				fclose($handle);
 			}
@@ -133,7 +135,7 @@ class ThumbnailController extends Controller {
 	}
 
 	private function secretOk(): bool {
-		return $this->secret->verify((string)$this->request->getHeader(SecretService::HEADER));
+		return $this->secret->verify($this->request->getHeader(SecretService::HEADER));
 	}
 
 	private function invalidSecret(): JSONResponse {
