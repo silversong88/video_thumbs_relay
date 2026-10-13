@@ -1,11 +1,11 @@
 [Unit]
-Description=Run the Video Thumbnail Relay worker hourly
+Description=Run the Video Thumbnail Relay worker every 30 minutes
 
 [Timer]
 OnBootSec=10min
 # Wall-clock schedule: OnUnitActiveSec never re-arms for a Type=oneshot service
-OnCalendar=hourly
-RandomizedDelaySec=5min
+OnCalendar=*:00,30
+RandomizedDelaySec=2min
 Persistent=true
 
 [Install]
