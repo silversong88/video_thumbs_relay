@@ -36,7 +36,7 @@ This app is a fork of [localthumbs](https://github.com/hersche/nc-local-thumbnai
     <repository type="git">https://github.com/silversong88/video_thumbs_relay.git</repository>
     <dependencies>
         <php min-version="8.2" max-version="8.5"/>
-        <nextcloud min-version="31" max-version="34/>
+        <nextcloud min-version="31" max-version="34/">
     </dependencies>
     <background-jobs>
         <job>OCA\VideoThumbsRelay\BackgroundJob\CleanupOrphans</job>
